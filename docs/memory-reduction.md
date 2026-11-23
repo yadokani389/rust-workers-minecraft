@@ -144,8 +144,8 @@ accounting. The integration suite verifies player and edited-chunk restoration.
 To repeat the workloads with the current build:
 
 ```sh
-TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 pnpm run test:experience -- --players 4 --max-players 20 --view 4 --simulation 3 --steps 128
-TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 pnpm run test:experience -- --players 20 --max-players 20 --view 4 --simulation 3 --steps 0
+TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 pnpm run test:experience --players 4 --max-players 20 --view 4 --simulation 3 --steps 128
+TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 pnpm run test:experience --players 20 --max-players 20 --view 4 --simulation 3 --steps 0
 ```
 
 ## Earlier stationary comparison (September 5, 2026)
@@ -174,7 +174,7 @@ transient JavaScript allocation. Process RSS is a separate measurement.
 ## Measuring changes
 
 Run `pnpm run test:memory` for a fresh world with a fixed seed, or supply a seed
-with `pnpm run test:memory -- --seed 1789200079352125165`. See
+with `pnpm run test:memory --seed 1789200079352125165`. See
 [development](development.md) for the probe's output and sampling limits.
 
 Status reports `wasm_memory_bytes`, `heap_allocated_bytes`, `heap_free_bytes`, and

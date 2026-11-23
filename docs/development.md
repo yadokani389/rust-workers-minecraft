@@ -34,7 +34,7 @@ with a fixed seed; use the same seed when comparing builds. See
 [configuration](configuration.md) for the exploration probe:
 
 ```sh
-pnpm run test:memory -- --seed 1789200079352125165
+pnpm run test:memory --seed 1789200079352125165
 ```
 
 The probe writes `memory.json` under `.data/probes/`, recording the seed, Wasm and

@@ -1,7 +1,7 @@
 // Java 26.2 framing, including negotiated packet compression.
-import { deflateSync, inflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from "node:zlib";
 export const PROTOCOL = 776;
-export const HOST = '127.0.0.1';
+export const HOST = "127.0.0.1";
 export const PORT = Number(process.env.TEST_TCP_PORT ?? 25565);
 export const HTTP_PORT = Number(process.env.TEST_HTTP_PORT ?? 8787);
 
@@ -23,20 +23,21 @@ export function readVarint(buffer, offset = 0) {
     value |= (byte & 0x7f) << (7 * i);
     if (!(byte & 0x80)) return [value >>> 0, offset + i + 1];
   }
-  throw new Error('Invalid VarInt: more than five bytes');
+  throw new Error("Invalid VarInt: more than five bytes");
 }
 
 export function mcString(value) {
-  const bytes = Buffer.from(value, 'utf8');
+  const bytes = Buffer.from(value, "utf8");
   return Buffer.concat([varint(bytes.length), bytes]);
 }
 
 export function frame(id, payload = Buffer.alloc(0), threshold = null) {
   let body = Buffer.concat([varint(id), payload]);
   if (threshold !== null) {
-    body = body.length >= threshold
-      ? Buffer.concat([varint(body.length), deflateSync(body, { level: 1 })])
-      : Buffer.concat([varint(0), body]);
+    body =
+      body.length >= threshold
+        ? Buffer.concat([varint(body.length), deflateSync(body, { level: 1 })])
+        : Buffer.concat([varint(0), body]);
   }
   return Buffer.concat([varint(body.length), body]);
 }
@@ -55,34 +56,37 @@ export async function* packets(socket, compression = { threshold: null }) {
       const length = readVarint(buffer);
       if (!length) break;
       const [size, start] = length;
-      if (size === 0 || size > 8 * 1024 * 1024) throw new Error('Invalid packet size');
+      if (size === 0 || size > 8 * 1024 * 1024) throw new Error("Invalid packet size");
       if (buffer.length < start + size) break;
       let body = buffer.subarray(start, start + size);
       buffer = buffer.subarray(start + size);
       if (compression.threshold !== null) {
         const length = readVarint(body);
-        if (!length) throw new Error('Missing uncompressed packet length');
+        if (!length) throw new Error("Missing uncompressed packet length");
         const [expected, offset] = length;
-        if (expected > 8 * 1024 * 1024) throw new Error('Uncompressed packet exceeds limit');
+        if (expected > 8 * 1024 * 1024) throw new Error("Uncompressed packet exceeds limit");
         body = body.subarray(offset);
         if (expected !== 0) {
-          if (expected < compression.threshold) throw new Error('Compressed packet below threshold');
+          if (expected < compression.threshold)
+            throw new Error("Compressed packet below threshold");
           body = inflateSync(body, { maxOutputLength: 8 * 1024 * 1024 });
-          if (body.length !== expected) throw new Error('Wrong uncompressed packet length');
+          if (body.length !== expected) throw new Error("Wrong uncompressed packet length");
         }
       }
       compression.decodedBytes = (compression.decodedBytes ?? 0) + body.length;
       const id = readVarint(body);
-      if (!id) throw new Error('Missing packet ID');
+      if (!id) throw new Error("Missing packet ID");
       yield { id: id[0], payload: body.subarray(id[1]) };
     }
   }
-  if (buffer.length) throw new Error('Connection ended mid-packet');
+  if (buffer.length) throw new Error("Connection ended mid-packet");
 }
 
 export function blockPosition({ x, y, z }) {
-  const value = (BigInt.asUintN(26, BigInt(x)) << 38n)
-    | (BigInt.asUintN(26, BigInt(z)) << 12n) | BigInt.asUintN(12, BigInt(y));
+  const value =
+    (BigInt.asUintN(26, BigInt(x)) << 38n) |
+    (BigInt.asUintN(26, BigInt(z)) << 12n) |
+    BigInt.asUintN(12, BigInt(y));
   const bytes = Buffer.alloc(8);
   bytes.writeBigUInt64BE(value);
   return bytes;
@@ -99,32 +103,41 @@ export function readBlockPosition(bytes) {
 
 /** Read one block from an uncompressed Java 26.2 overworld chunk. */
 export function chunkBlock(chunk, { x, y, z }) {
-  if (y < -64 || y >= 320) throw new RangeError('Block outside the overworld');
+  if (y < -64 || y >= 320) throw new RangeError("Block outside the overworld");
   let offset = 8;
   const int = () => {
     const result = readVarint(chunk, offset);
-    if (!result) throw new Error('Truncated chunk');
+    if (!result) throw new Error("Truncated chunk");
     offset = result[1];
     return result[0];
   };
   const heightmaps = int();
-  for (let i = 0; i < heightmaps; i++) { int(); const length = int(); offset += length * 8; }
+  for (let i = 0; i < heightmaps; i++) {
+    int();
+    const length = int();
+    offset += length * 8;
+  }
   const size = int();
   const end = offset + size;
-  if (end > chunk.length) throw new Error('Truncated chunk sections');
+  if (end > chunk.length) throw new Error("Truncated chunk sections");
   const palette = (entries, indirectBits) => {
     const bits = chunk[offset++];
-    if (bits === 0) { const value = int(); return () => value; }
+    if (bits === 0) {
+      const value = int();
+      return () => value;
+    }
     if (bits > 16) throw new Error(`Invalid palette width: ${bits}`);
     const values = bits <= indirectBits ? Array.from({ length: int() }, int) : null;
     const perWord = Math.floor(64 / bits);
     const start = offset;
     offset += Math.ceil(entries / perWord) * 8;
-    if (offset > end) throw new Error('Palette exceeds section data');
-    return index => {
+    if (offset > end) throw new Error("Palette exceeds section data");
+    return (index) => {
       const word = chunk.readBigUInt64BE(start + Math.floor(index / perWord) * 8);
-      const value = Number((word >> BigInt((index % perWord) * bits)) & ((1n << BigInt(bits)) - 1n));
-      if (values && value >= values.length) throw new Error('Invalid palette index');
+      const value = Number(
+        (word >> BigInt((index % perWord) * bits)) & ((1n << BigInt(bits)) - 1n),
+      );
+      if (values && value >= values.length) throw new Error("Invalid palette index");
       return values ? values[value] : value;
     };
   };
@@ -143,12 +156,12 @@ export function* sectionUpdates(payload) {
   const z = Number(BigInt.asIntN(22, section >> 20n)) * 16;
   const y = Number(BigInt.asIntN(20, section)) * 16;
   const count = readVarint(payload, 8);
-  if (!count || count[0] > 4096) throw new Error('Invalid section update count');
+  if (!count || count[0] > 4096) throw new Error("Invalid section update count");
   let offset = count[1];
   for (let i = 0; i < count[0]; i++) {
     let value = 0n;
     for (let shift = 0; ; shift += 7) {
-      if (shift >= 70 || offset >= payload.length) throw new Error('Invalid block-update VarLong');
+      if (shift >= 70 || offset >= payload.length) throw new Error("Invalid block-update VarLong");
       const byte = payload[offset++];
       value |= BigInt(byte & 127) << BigInt(shift);
       if (!(byte & 128)) break;

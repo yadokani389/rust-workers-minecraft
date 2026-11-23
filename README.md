@@ -11,9 +11,23 @@ runs the game and stores the world in a mounted SQLite filesystem.
 Minecraft → local TCP bridge → WSS → Worker → MinecraftWorld → Pumpkin + SQLite
 ```
 
-## Try it
+## Play on the public server
 
-From a checkout of this repository, enter the Nix development shell:
+Ask the server operator for the bridge token. From a checkout, put
+`MC_BRIDGE_TOKEN=...` in `.env`, then install the bridge dependencies and run
+it with Node:
+
+```sh
+pnpm install
+node --env-file=.env bridge/cli.mjs wss://minecraft.yadokani389.net/minecraft
+```
+
+On the same PC, connect **Minecraft Java 26.2** to **`127.0.0.1:25565`**. The
+bridge listens on loopback and uses port `25565` when you omit the port argument.
+
+## Run locally
+
+From a checkout, enter the Nix development shell:
 
 ```sh
 nix develop
@@ -36,11 +50,24 @@ the Durable Object; [gameplay settings](docs/configuration.md) such as view
 distance and the player limit are Worker variables.
 
 World data lives under `.data/workers/server/`, written through to the Durable
-Object's SQLite storage as Pumpkin saves. After the last player leaves, the
-server saves and keeps a short reconnect window before stopping; the next
-connection starts it on the same world. Server-list pings do not start the
-runtime. Wait for status to report `phase: "idle"` before stopping Miniflare so
-the final save completes.
+Object's SQLite storage as Pumpkin saves. When the last player disconnects, the
+server saves players, world data, and dirty chunks, then keeps a short reconnect
+window. A login during the window cancels the shutdown. When the window ends, it
+performs a final save, syncs storage, and reports `phase: "idle"`; the next login
+starts it again on the same world. Server-list pings do not start the runtime.
+Wait for `phase: "idle"` in status before stopping Miniflare so the final save
+completes.
+
+To test the WebSocket bridge against the local Worker, put
+`MC_BRIDGE_TOKEN=...` in an untracked `.dev.vars` file. Start `pnpm run dev`,
+then run the bridge in another terminal:
+
+```sh
+node --env-file=.dev.vars bridge/cli.mjs ws://127.0.0.1:8787/minecraft 25566
+```
+
+Connect **Minecraft Java 26.2** to `127.0.0.1:25566`. Port `25565` is already in
+use by the local raw TCP listener. The bridge requires `wss://` outside loopback.
 
 ## Build and contribute
 
@@ -56,38 +83,24 @@ observe the same block edit and that the edit and player position survive restar
 See [development](docs/development.md), [architecture](docs/architecture.md), and
 [dependency pins](docs/dependencies.md) for build details and patch maintenance.
 
-## Connect through WebSocket
-
-For local development, set `MC_BRIDGE_TOKEN` to a random value in an untracked
-`.dev.vars` file. Start `pnpm run dev`, then run the bridge in another terminal
-with the same token exported in its environment:
-
-```sh
-pnpm run bridge ws://127.0.0.1:8787/minecraft 25566
-```
-
-Connect Minecraft Java 26.2 to `127.0.0.1:25566`. Port `25565` is already in use
-by the local raw TCP listener. The bridge defaults to port `25565` when you omit
-the port argument. Outside loopback, the bridge requires `wss://`.
-
-The deployment targets `wss://minecraft.yadokani389.net/minecraft`, with no
-Spectrum configuration. Deploying attaches only that custom hostname, not the
-apex or `www`. The `workers.dev` and preview URLs are disabled.
-Store `MC_BRIDGE_TOKEN` as a Worker secret before allowing players to connect.
-The deployed HTTP status route (`/`) requires the same token; `/health` does
-not query the Durable Object.
-The token controls access to the server; it does not authenticate Minecraft
-names. Use a trusted group only. Production compatibility of the internal
-Workers-to-Durable-Object TCP path and the monthly cost still need verification.
-See [memory usage](docs/memory-reduction.md) before increasing player limits.
-
-## Deployment check
+## Deploy
 
 `pnpm run deploy:check` builds the Worker and validates the prebuilt output with
 `cf` without uploading it. `pnpm run deploy` uploads that output. Authenticate
 with Cloudflare first. To set `MC_BRIDGE_TOKEN` on deploy, pass
 `--secrets-file` with a private file containing only the intended Worker secret.
 Keep that file out of Git.
+
+The deployment targets `wss://minecraft.yadokani389.net/minecraft`, with no
+Spectrum configuration. Deploying attaches only that custom hostname, not the
+apex or `www`. The `workers.dev` and preview URLs are disabled.
+
+Store `MC_BRIDGE_TOKEN` as a Worker secret before allowing players to connect.
+The deployed HTTP status route (`/`) requires the same token; `/health` does
+not query the Durable Object. The token controls access to the server; it does
+not authenticate Minecraft names. Use a trusted group only. The monthly cost of
+the deployment has not been measured. See [memory usage](docs/memory-reduction.md)
+before increasing player limits.
 
 ## Credits and license
 

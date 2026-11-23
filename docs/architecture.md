@@ -32,21 +32,23 @@ a zero-delay timer. The Emscripten library maps host immediates to the public
 finished. Tokio can then observe clock progress without `precise_timers`.
 Cancellation aborts the wait and prevents a queued callback from running.
 `status` and `serverList` are plain `#[wasm_bindgen]` RPC methods. The first
-`connect` after idle runs the server lifetime: it starts Pumpkin on the mounted
-world, awaits the server's return after its final save, awaits `storage.sync()`,
-and settles the connection's promise. Later connections and `status` calls enter
-the same instance as ordinary calls while that future is parked. A connection
-arriving while the server is starting or stopping waits for the next phase
-change and then retries, so a client that connects as the previous server
-saves and stops starts the next one. The runtime's epoll and timer waits register
-with the host through Emscripten's Node backend (emscripten-core/emscripten#27547),
-so a readiness or timer callback resumes the scheduler on the host loop.
+gameplay login after idle runs the server lifetime and keeps its own promise
+pending until the server stops. It starts Pumpkin on the mounted world, awaits
+the server's return after its final save, and awaits `storage.sync()`. Later
+connections and `status` calls enter the same instance as ordinary calls while
+the server runs.
+A connection arriving while the server is starting or stopping waits for the
+next phase change and then retries, so a client that connects as the previous
+server saves and stops starts the next one. The runtime's epoll and timer waits
+register with the host through Emscripten's Node backend
+(emscripten-core/emscripten#27547), so a readiness or timer callback resumes the
+scheduler on the host loop.
 
 Pumpkin binds its stock `TcpListener` on port 25565. Emscripten's Node socket
 backend implements that with `net.BoundSocket`/`net.Server`, which workerd scopes
-to the Durable Object's own port table. The object's `connect` routes each
-inbound socket to that listener with `Socket::handle_as_node_connection`; the
-accepted connection surfaces
+to the Durable Object's own port table. The object's connection handlers route
+each accepted socket to that listener with `Socket::handle_as_node_connection`;
+the accepted connection surfaces
 through epoll readiness and Pumpkin's normal accept loop, reporting the bound
 address and an unspecified peer.
 

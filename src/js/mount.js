@@ -1,11 +1,11 @@
 // The world's filesystem: worker-fs-mount's node:fs implementation routes paths
 // under a mount to the Durable Object's SQLite storage and everything else to
 // workerd's node:fs. Emscripten's NODERAWFS is rebound to it (src/workerd.js).
-import { LocalDOFilesystem } from 'durable-object-fs/local';
-import { mount, unmount } from 'worker-fs-mount';
-import * as fs from 'worker-fs-mount/fs-sync';
+import { LocalDOFilesystem } from "durable-object-fs/local";
+import { mount, unmount } from "worker-fs-mount";
+import * as fs from "worker-fs-mount/fs-sync";
 
-export const ROOT = '/data';
+export const ROOT = "/data";
 
 // The mount table is per isolate and an isolate outlives an object instance
 // (and may host several), so each constructor takes the mount over: one wasm

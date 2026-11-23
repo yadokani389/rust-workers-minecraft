@@ -1,28 +1,34 @@
 # Server configuration
 
 Gameplay settings live in `worker.config.json` under `env` as text bindings.
-Restart the local Worker to apply configuration changes. The object reads and validates them in its constructor; invalid settings
-fail the next connection and appear in the HTTP status response's `failure` field.
+Restart the local Worker to apply configuration changes. The object reads and
+validates them in its constructor. An invalid setting fails the next connection
+and appears in the HTTP status response's `failure` field.
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `WORLD_NAME` | `world` | Selects the Durable Object and its separate saved world. |
-| `WORLD_SEED` | Unset | Seed for a new world; an existing world keeps its saved seed. |
-| `VIEW_DISTANCE` | `3` | Maximum client view distance, from 2 to 32 chunks. |
-| `SIMULATION_DISTANCE` | `3` | Simulation radius, from 2 to the configured view distance. |
-| `MAX_PLAYERS` | `2` | Login limit, from 1 to 1,000; capacity depends on the world and workload. |
-| `COMPRESSION_THRESHOLD` | `512` | Compress packets at or above this byte count; `-1` disables compression. |
-| `COMPRESSION_LEVEL` | `1` | Compression level, from 0 to 9; 1 favors speed. |
-| `IDLE_TIMEOUT_SECONDS` | `10` | Reconnect window after the last player leaves, from 0 to 30 seconds; 0 stops immediately. |
-| `MOTD` | `Minecraft on Cloudflare Workers` | Description displayed in the Minecraft server list. |
+| Variable | Shipped | Code fallback | Meaning |
+| --- | --- | --- | --- |
+| `WORLD_NAME` | `world` | Required | Selects the Durable Object and its separate saved world. |
+| `WORLD_SEED` | Unset | Unset | Seed for a new world; an existing world keeps its saved seed. |
+| `VIEW_DISTANCE` | `3` | `4` | Maximum client view distance, from 2 to 32 chunks. |
+| `SIMULATION_DISTANCE` | `3` | `3` | Simulation radius, from 2 to the configured view distance. |
+| `MAX_PLAYERS` | `20` | `20` | Login limit, from 1 to 1,000; capacity depends on the world and workload. |
+| `COMPRESSION_THRESHOLD` | `512` | `512` | Compress packets at or above this byte count; `-1` disables compression. |
+| `COMPRESSION_LEVEL` | `1` | `1` | Compression level, from 0 to 9; 1 favors speed. |
+| `IDLE_TIMEOUT_SECONDS` | `10` | `10` | Reconnect window after the last player leaves, from 0 to 30 seconds; 0 stops immediately. |
+| `MOTD` | `Minecraft on Cloudflare Workers` | `Minecraft on Cloudflare Workers` | Description displayed in the Minecraft server list. |
+
+`worker.config.json` ships view distance 3, simulation distance 3, and 20
+players. The code fallback applies only when a binding is absent: view distance
+4, simulation distance 3, and 20 players. Removing a binding does not preserve
+the shipped value.
 
 The accepted ranges describe valid protocol settings, not a supported capacity
 for every world. Chunk generation, separate player locations, and world content
 can substantially increase memory usage. A larger view distance does not imply
 a larger simulation distance is needed.
 
-This fork starts at view and simulation distance 3 with a two-player limit.
-The [upstream memory probes](memory-reduction.md#exploration-comparison-september-12-2026)
+The 20-player value is a login limit. The
+[upstream memory probes](memory-reduction.md#exploration-comparison-september-12-2026)
 show how separate exploration paths can raise memory use. Re-run the probe on
 your world before raising the view distance or player limit.
 
@@ -71,9 +77,9 @@ directions, recording traffic, Wasm capacity, allocator usage, status latency,
 and observed tick rate. It writes `experience.json` under `.data/probes/`.
 
 ```sh
-pnpm run test:experience -- --view 3 --simulation 3 --players 2 --compression=512
-pnpm run test:experience -- --view 4 --simulation 3 --players 2 --compression=512
-pnpm run test:experience -- --view 3 --simulation 3 --players 2 --compression=-1
+pnpm run test:experience --view 3 --simulation 3 --players 2 --compression=512
+pnpm run test:experience --view 4 --simulation 3 --players 2 --compression=512
+pnpm run test:experience --view 3 --simulation 3 --players 2 --compression=-1
 ```
 
 Use the same seed, workload, and build when comparing settings. These are local
@@ -84,7 +90,7 @@ Tests can use separate loopback ports while the playable server is running:
 
 ```sh
 TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9230 pnpm test
-TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9230 pnpm run test:experience -- --view 4
+TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9230 pnpm run test:experience --view 4
 ```
 
 `TEST_INSPECTOR_PORT` separates the probe's debugger listener from another local
@@ -128,7 +134,7 @@ MiB. Both completed, but the long run leaves very little space for JavaScript
 inside the standard isolate memory budget. These controls reduce demand; they
 do not establish unrestricted exploration or a general two-player capacity
 bound. The subsequent [memory work](memory-reduction.md#exploration-comparison-september-12-2026)
-reduced allocation at the same gameplay settings and replaced that temporary
-preset with the current 4/3 defaults. The original measurements remain in
+reduced allocation at the same gameplay settings. The shipped configuration now
+uses 3/3. The original measurements remain in
 `configuration-results.json`; the newer [exploration results](memory-exploration-results.json)
 record the optimized builds and unsuccessful attempts separately.
