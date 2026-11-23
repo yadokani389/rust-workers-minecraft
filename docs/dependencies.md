@@ -38,23 +38,31 @@ graph, including the branch commits.
 ## Host tools
 
 - Rust: `1.99.0`, target `wasm32-unknown-emscripten`. The Nix flake supplies the
-  compiler and target directly. Keep the exact compiler pin with worker-build 0.8.7: newer Cargo
-  versions place the generated JavaScript snippets outside the directory that
-  this worker-build release bundles. The scripts set `RUST_MIN_STACK` for
-  pumpkin-data's generated tables.
-- worker-build 0.8.7 (cloudflare/workers-rs#1061 released): installed by setup
-  with `cargo install`, matching the `worker` crate version in Cargo.toml, into
-  `.work/bin/`. It provisions emsdk 6.0.10 with
-  its bundled Emscripten patches and the matching wasm-bindgen CLI under
-  `~/.cache/worker-build`, drives cargo and emcc with the common link settings,
-  wraps the exports into the entrypoint and Durable Object classes, and emits
-  `build/`. `EMSCRIPTEN`/`EMSDK` select a local toolchain instead.
+  compiler and target directly. The Worker builds as Rust 2024, and the
+  workspace uses resolver 3; `flake.nix` formats with the same edition. The
+  scripts set `RUST_MIN_STACK` for pumpkin-data's generated tables.
+- worker-build 0.8.7: installed by setup with `cargo install`, at the version
+  matching the `worker` crate version in Cargo.toml, into `.work/bin/`. It
+  provisions emsdk 6.0.10 with its bundled Emscripten patches and the matching
+  wasm-bindgen CLI (0.2.129) under `~/.cache/worker-build`, drives cargo and
+  emcc with the common link settings, wraps the exports into the entrypoint and
+  Durable Object classes, and emits `build/`. `EMSCRIPTEN`/`EMSDK` select a
+  local toolchain instead.
 - Node: 24+; 26 recommended and selected in CI. Used for build tools and tests.
 - Python: 3.11+ (Emscripten scripts, emsdk and TOML parsing).
 - workerd 1.20260925.1 (used by Miniflare 5.20260925.0-alpha); 1.20260918.1 was the first release with `net.Server` inbound routing into
   Durable Objects (`handleAsNodeConnection`, cloudflare/workerd#7306, #7313) and
   the `node:fs` fixes for positional buffer I/O (#7368), `O_TRUNC` (#7369),
   `O_CREAT` (#7393), and rename over an existing path (#7394).
+
+The Worker stays on worker-build 0.8.7 for now. With worker 0.9.0,
+wasm-bindgen 0.2.130, and worker-build 0.9.0, the World Durable Object's hosted
+event loop stopped being driven mid-run in the integration test, and the run
+timed out with `no server packet for 30 seconds`. That happened in 3 of 4 local
+runs, and in the failing CI run at `7df5232`. The 0.8.7 stack passed 7
+consecutive runs on the same machine with the same source and the same tokio and
+Pumpkin patches. The Rust 2024 edition and resolver 3 upgrade is unaffected.
+Moving to 0.9.0 needs the event-loop wakeup issue resolved first.
 
 ## Updating a patch
 

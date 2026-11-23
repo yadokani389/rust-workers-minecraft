@@ -8,15 +8,15 @@
 
 use crate::{config, handshake, host, memory, settings::Settings};
 use host::{js_error, method, property};
-use pumpkin::{data::VanillaData, server::Server, PumpkinServer};
+use pumpkin::{PumpkinServer, data::VanillaData, server::Server};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    sync::{atomic::Ordering, Arc, Once},
+    sync::{Arc, Once, atomic::Ordering},
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use worker::{durable_object, worker_sys, DurableObject, Env, Socket, State};
+use worker::{DurableObject, Env, Socket, State, durable_object, worker_sys};
 
 pub const PORT: u16 = 25565;
 
@@ -289,7 +289,7 @@ impl Shared {
                 Phase::Failed => {
                     return Err(js_error(
                         self.failure.borrow().as_deref().unwrap_or("failed"),
-                    ))
+                    ));
                 }
                 Phase::Starting | Phase::Stopping => {
                     JsFuture::from(self.transition()?).await?;

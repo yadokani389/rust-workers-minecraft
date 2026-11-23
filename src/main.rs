@@ -8,7 +8,7 @@ mod world;
 use host::method;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use worker::{event, worker_sys, Context, Env, Request, Response, Socket};
+use worker::{Context, Env, Request, Response, Socket, event, worker_sys};
 
 #[wasm_bindgen(module = "/src/js/tunnel.js")]
 extern "C" {

@@ -62,7 +62,7 @@
               rustfmt = {
                 enable = true;
                 package = rust;
-                edition = "2021";
+                edition = "2024";
               };
               oxfmt = {
                 enable = true;
