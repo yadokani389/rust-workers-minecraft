@@ -23,11 +23,23 @@ const mf = new Miniflare({ workers: [{ config: {
       import { matchesBearer, upgradeMinecraft } from './tunnel.js';
 
       export class World extends DurableObject {
-        listener = net.createServer(socket => socket.pipe(socket));
+        listener = net.createServer(socket => socket.on('data', bytes => {
+          if (bytes[0] === 1) socket.end(bytes);
+          else socket.write(bytes);
+        }));
         ready = new Promise(resolve => this.listener.listen(25565, resolve));
-        async connect(socket) {
-          await this.ready;
-          await handleAsNodeConnection(socket);
+        fetch(request) {
+          const path = new URL(request.url).pathname;
+          return upgradeMinecraft(async ({ readable, writable, prepareSocket }) => {
+            if (path === '/stalled') return new Promise(() => {});
+            const reader = readable.getReader();
+            const { value } = await reader.read();
+            reader.releaseLock();
+            if (path === '/burst') return writable.getWriter().write(new Uint8Array(256 * 1024 + 17));
+            await this.ready;
+            const socket = prepareSocket(value, 'world:25565');
+            if (socket) await handleAsNodeConnection(socket);
+          }, 16384, path === '/burst' ? 25_000 : path === '/stalled' ? 5000 : 1000);
         }
       }
 
@@ -35,15 +47,7 @@ const mf = new Miniflare({ workers: [{ config: {
         if (!matchesBearer(request.headers.get('authorization') ?? '', 'fixture-token')) {
           return new Response(null, { status: 401 });
         }
-        const path = new URL(request.url).pathname;
-        return upgradeMinecraft(async ({ readable, writable, relay }) => {
-          if (path === '/stalled') return new Promise(() => {});
-          const reader = readable.getReader();
-          const { value } = await reader.read();
-          reader.releaseLock();
-          if (path === '/burst') return writable.getWriter().write(new Uint8Array(256 * 1024 + 17));
-          return relay(exports.World.getByName('world').connect('world:25565'), value);
-        }, 16384, path === '/burst' ? 25_000 : path === '/stalled' ? 5000 : 1000);
+        return exports.World.getByName('world').fetch(request);
       }};
     ` },
   } },
@@ -97,6 +101,22 @@ test('rejects a bad bearer and relays ordered bytes across isolated connections'
   } finally {
     a.terminate();
     b.terminate();
+  }
+});
+
+test('drains the listener reply before closing the WebSocket', { timeout: 4000 }, async () => {
+  const ws = await open();
+  try {
+    const reply = once(ws, 'message');
+    const ended = once(ws, 'close');
+    ws.send(Buffer.of(1, 2, 3));
+    assert.deepEqual((await reply)[0], Buffer.of(1, 2, 3));
+    await wait(50);
+    assert.equal(ws.readyState, WebSocket.OPEN);
+    ws.send('3');
+    assert.equal((await ended)[0], 1000);
+  } finally {
+    ws.terminate();
   }
 });
 

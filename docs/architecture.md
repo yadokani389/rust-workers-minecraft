@@ -11,7 +11,11 @@ the object's metadata (`serverList`) without starting a server, and gameplay
 connections are forwarded to the named `MinecraftWorld` object (declared under
 `exports` in `worker.config.json` and reached through `cloudflare:workers`'
 `exports`) with its `connect`, writing the consumed bytes ahead and copying both directions
-with Tokio. `fetch` (`#[event(fetch)]`) serves status.
+with Tokio. For `/minecraft`, the Worker checks the bearer token and forwards
+the upgrade request to the world Durable Object. The object accepts the
+WebSocket so incoming messages refresh its CPU allowance. It passes the ordered
+bytes to the same Pumpkin listener through a virtual socket with a BYOB-readable
+stream instead of opening a separate Durable Object TCP event.
 
 `MinecraftWorld` is a `#[durable_object(connect)]`; its constructor mounts
 `state.storage().as_raw()` and the server root awaits `Storage::sync`. The

@@ -2,12 +2,11 @@
 //!
 //! A `#[durable_object(connect)]`: its handlers run on the thread's ambient
 //! Tokio event loop, whose wait is the host event loop, so nothing blocks or
-//! suspends. The server lifetime is one such future: the first `connect` after
-//! idle runs it on the world mounted from the object's storage, and it
-//! completes after the final save is synced. Later connections are routed to
-//! the running listener, and the handler outlives each routed connection.
+//! suspends. The first TCP or WebSocket login after idle runs the world until
+//! the final save is synced. Later connections are routed to the running
+//! listener, and each handler outlives its connection.
 
-use crate::{config, host, memory, settings::Settings};
+use crate::{config, handshake, host, memory, settings::Settings};
 use host::{js_error, method, property};
 use pumpkin::{data::VanillaData, server::Server, PumpkinServer};
 use std::{
@@ -17,9 +16,21 @@ use std::{
 };
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
-use worker::{durable_object, DurableObject, Env, Socket, State};
+use worker::{durable_object, worker_sys, DurableObject, Env, Socket, State};
 
 pub const PORT: u16 = 25565;
+
+const TUNNEL_FRAME: usize = 16 * 1024;
+
+#[wasm_bindgen(module = "/src/js/tunnel.js")]
+extern "C" {
+    #[wasm_bindgen(catch, js_name = upgradeMinecraft)]
+    fn upgrade_minecraft(
+        run: &JsValue,
+        frame: u32,
+        handshake_ms: u32,
+    ) -> Result<web_sys::Response, JsValue>;
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Phase {
@@ -119,21 +130,27 @@ impl DurableObject for MinecraftWorld {
         }
     }
 
-    async fn fetch(&self, _req: worker::Request) -> worker::Result<worker::Response> {
-        worker::Response::error("tcp only", 404)
+    async fn fetch(&self, req: worker::Request) -> worker::Result<worker::Response> {
+        if req.path() != "/minecraft" {
+            return worker::Response::error("Not found", 404);
+        }
+        let shared = self.shared.clone();
+        let start = Closure::once(move |tunnel: JsValue| {
+            let login = wasm_bindgen_futures::tokio::with_ambient(|runtime| {
+                runtime.spawn_local(shared.serve_websocket(tunnel))
+            });
+            wasm_bindgen_futures::future_to_promise(async move { login.await.map_err(js_error)? })
+        });
+        Ok(upgrade_minecraft(
+            &start.into_js_value(),
+            TUNNEL_FRAME as u32,
+            handshake::TIMEOUT.as_millis() as u32,
+        )?
+        .into())
     }
 
-    /// Serves one inbound connection; resolves when it closes. The first call
-    /// while idle also runs the server, resolving once the final save is synced.
     async fn connect(&self, socket: Socket) -> worker::Result<()> {
-        let shared = self.shared.clone();
-        // On a running server `connect` resolves to the promise of the routed
-        // connection; this handler must outlive it, or the host closes the socket.
-        let served = shared.connect(socket).await.map_err(worker::Error::from)?;
-        if let Ok(promise) = served.dyn_into::<js_sys::Promise>() {
-            JsFuture::from(promise).await.map_err(worker::Error::from)?;
-        }
-        Ok(())
+        self.shared.clone().serve(socket).await.map_err(Into::into)
     }
 }
 
@@ -196,13 +213,52 @@ impl MinecraftWorld {
     /// starting a server.
     #[wasm_bindgen(js_name = serverList)]
     pub fn server_list(&self, protocol: f64) -> Result<JsValue, JsValue> {
-        let shared = &self.shared;
-        let settings = shared.settings.as_ref().map_err(|e| js_error(e.clone()))?;
-        let online = SERVER.with(|slot| match (shared.phase.get(), slot.borrow().as_ref()) {
+        self.shared
+            .server_list(protocol)
+            .map(JsValue::from)
+            .map_err(js_error)
+    }
+}
+
+/// The Java versions the pinned Pumpkin accepts.
+const MIN_PROTOCOL: f64 = 4.0;
+const MAX_PROTOCOL: f64 = 776.0;
+const VERSION_NAME: &str = "1.7.2-26.2";
+
+impl Shared {
+    async fn serve_websocket(self: Rc<Self>, tunnel: JsValue) -> Result<JsValue, JsValue> {
+        let classified = {
+            let mut client = Socket::from(tunnel.clone().unchecked_into::<worker_sys::Socket>());
+            // A whole frame fits, so the SDK retains no bytes when
+            // the listener takes over the stream.
+            handshake::accept(&mut client, &mut [0; TUNNEL_FRAME], |protocol| {
+                std::future::ready(self.server_list(protocol.into()))
+            })
+            .await
+            .map_err(js_error)?
+        };
+        if let handshake::Handshake::Login { consumed } = classified {
+            let prefix = js_sys::Uint8Array::from(consumed.as_slice());
+            let socket = method(
+                &tunnel,
+                "prepareSocket",
+                &[prefix.as_ref(), &authority().into()],
+            )?;
+            if !socket.is_null() {
+                self.serve(Socket::from(socket.unchecked_into::<worker_sys::Socket>()))
+                    .await?;
+            }
+        }
+        Ok(JsValue::UNDEFINED)
+    }
+
+    fn server_list(&self, protocol: f64) -> Result<String, String> {
+        let settings = self.settings.as_ref().map_err(Clone::clone)?;
+        let online = SERVER.with(|slot| match (self.phase.get(), slot.borrow().as_ref()) {
             (Phase::Running, Some(server)) => server.get_all_players().len(),
             _ => 0,
         });
-        let text = if shared.phase.get() == Phase::Failed {
+        let text = if self.phase.get() == Phase::Failed {
             "Server unavailable"
         } else {
             &settings.motd
@@ -218,20 +274,18 @@ impl MinecraftWorld {
             "description": { "text": text },
             "enforcesSecureChat": false,
         });
-        Ok(JsValue::from(json.to_string()))
+        Ok(json.to_string())
     }
-}
 
-/// The Java versions the pinned Pumpkin accepts.
-const MIN_PROTOCOL: f64 = 4.0;
-const MAX_PROTOCOL: f64 = 776.0;
-const VERSION_NAME: &str = "1.7.2-26.2";
-
-impl Shared {
-    async fn connect(self: Rc<Self>, socket: worker::Socket) -> Result<JsValue, JsValue> {
+    /// The first connection runs the world through its final save. Later
+    /// connections keep their handler alive only until the socket closes.
+    async fn serve(self: Rc<Self>, socket: Socket) -> Result<(), JsValue> {
         loop {
             match self.phase.get() {
-                Phase::Running => return self.route(socket),
+                Phase::Running => {
+                    JsFuture::from(self.route(socket)).await?;
+                    return Ok(());
+                }
                 Phase::Failed => {
                     return Err(js_error(
                         self.failure.borrow().as_deref().unwrap_or("failed"),
@@ -285,7 +339,7 @@ impl Shared {
     }
 
     /// Routes a socket to Pumpkin's listener and tracks it until it closes.
-    fn route(self: &Rc<Self>, socket: worker::Socket) -> Result<JsValue, JsValue> {
+    fn route(self: &Rc<Self>, socket: Socket) -> js_sys::Promise {
         self.connections.set(self.connections.get() + 1);
         self.idle_deadline.set(None);
         let shared = self.clone();
@@ -299,10 +353,10 @@ impl Shared {
                 .map(|()| JsValue::UNDEFINED)
                 .map_err(|e| JsValue::from(e))
         };
-        Ok(wasm_bindgen_futures::future_to_promise(served).into())
+        wasm_bindgen_futures::future_to_promise(served)
     }
 
-    async fn run(self: Rc<Self>, first: worker::Socket, started: f64) -> Result<JsValue, JsValue> {
+    async fn run(self: Rc<Self>, first: Socket, started: f64) -> Result<(), JsValue> {
         let root = host::MOUNT_ROOT
             .with(|root| root.as_string())
             .unwrap_or_default();
@@ -321,9 +375,9 @@ impl Shared {
         self.startup_ms.set(Some(js_sys::Date::now() - started));
         self.starts.set(self.starts.get() + 1);
 
-        // The first connection's promise belongs to the platform; the server
-        // root tracks it only through `connections`.
-        drop(self.route(first)?);
+        // Routing is detached. The world tracks the first connection through
+        // `connections` and runs until the final save, even if that socket closes.
+        drop(self.route(first));
         let idle = self.idle.clone();
         let shared = self.clone();
         let timeout = std::time::Duration::from_secs(settings.idle_timeout_seconds.into());
@@ -370,7 +424,7 @@ impl Shared {
         self.saved_at
             .replace(Some(String::from(js_sys::Date::new_0().to_iso_string())));
         self.set_phase(Phase::Idle);
-        Ok(JsValue::UNDEFINED)
+        Ok(())
     }
 }
 

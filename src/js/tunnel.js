@@ -22,11 +22,12 @@ export function upgradeMinecraft(run, frameLimit, handshakeMs) {
   const [client, server] = Object.values(new WebSocketPair());
   server.binaryType = 'arraybuffer';
   const queue = [];
-  let upstream, input, pull, credit;
+  let input, pull, credit, resolveClosed;
   let queuedBytes = 0, sent = 0, acked = 0, closed = false;
-  let ingressTimer, ackTimer, writeTimer;
+  let ingressTimer, ackTimer;
 
   const readable = new ReadableStream({
+    type: 'bytes',
     start(controller) { input = controller; },
     pull() {
       if (queue.length) {
@@ -56,6 +57,7 @@ export function upgradeMinecraft(run, frameLimit, handshakeMs) {
         ackTimer ??= setTimeout(onAckTimeout, STALL_MS);
       }
     },
+    close: finish,
   });
 
   function waitForAck() {
@@ -82,15 +84,15 @@ export function upgradeMinecraft(run, frameLimit, handshakeMs) {
     clearTimeout(handshakeTimer);
     clearTimeout(ingressTimer);
     clearTimeout(ackTimer);
-    clearTimeout(writeTimer);
     server.removeEventListener('message', onMessage);
     server.removeEventListener('close', onClose);
     server.removeEventListener('error', onError);
     queue.length = 0;
-    input.error(new Error('Minecraft tunnel closed'));
+    input.close();
+    input.byobRequest?.respond(0);
     pull?.resolve();
     credit?.resolve();
-    void upstream?.close().catch(() => {});
+    resolveClosed?.();
     if (server.readyState < 2) server.close(code, reason);
   }
 
@@ -139,43 +141,24 @@ export function upgradeMinecraft(run, frameLimit, handshakeMs) {
       const start = run;
       run = undefined;
       // Start using the socket's I/O context, not the upgrade request's.
-      void Promise.resolve().then(() => start({ readable, writable, relay })).then(finish).catch(onError);
+      void Promise.resolve().then(() => start({ readable, writable, prepareSocket })).then(finish).catch(onError);
     }
   }
 
-  async function relay(socket, prefix) {
-    void socket.closed.catch(() => {});
-    if (closed) {
-      await socket.close();
-      return;
-    }
-    upstream = socket;
+  function prepareSocket(prefix, localAddress) {
+    if (closed) return null;
     clearTimeout(handshakeTimer);
-    const reader = readable.getReader();
-    const writer = socket.writable.getWriter();
-    // The consumed prefix includes Minecraft bytes read ahead of the handshake.
-    async function toUpstream() {
-      try {
-        for (let bytes = prefix; !closed;) {
-          writeTimer = setTimeout(() => close(1008, 'Upstream write stalled'), STALL_MS);
-          try {
-            await writer.write(bytes);
-          } finally {
-            clearTimeout(writeTimer);
-          }
-          const next = await reader.read();
-          if (next.done) break;
-          bytes = next.value;
-        }
-      } finally {
-        reader.releaseLock();
-        writer.releaseLock();
-      }
-    }
-    await Promise.race([
-      toUpstream(),
-      socket.readable.pipeTo(writable, { preventClose: true, preventAbort: true }),
-    ]);
+    // The handshake reader has released its lock. Replay consumed bytes
+    // ahead of any unread WebSocket frames, including login read-ahead.
+    input.enqueue(prefix);
+    const done = Promise.withResolvers();
+    resolveClosed = done.resolve;
+    return {
+      opened: Promise.resolve({ localAddress }),
+      closed: done.promise,
+      readable, writable,
+      close: finish,
+    };
   }
 
   server.accept();

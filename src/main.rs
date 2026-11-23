@@ -5,24 +5,15 @@ mod memory;
 mod settings;
 mod world;
 
-use host::{js_error, method};
-use std::panic::AssertUnwindSafe;
+use host::method;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::{future_to_promise, JsFuture};
+use wasm_bindgen_futures::JsFuture;
 use worker::{event, worker_sys, Context, Env, Request, Response, Socket};
-
-const TUNNEL_FRAME: usize = 16 * 1024;
 
 #[wasm_bindgen(module = "/src/js/tunnel.js")]
 extern "C" {
     #[wasm_bindgen(js_name = matchesBearer)]
     fn matches_bearer(header: &str, secret: &str) -> bool;
-    #[wasm_bindgen(catch, js_name = upgradeMinecraft)]
-    fn upgrade_minecraft(
-        run: &JsValue,
-        frame: u32,
-        handshake_ms: u32,
-    ) -> Result<web_sys::Response, JsValue>;
 }
 
 fn main() {}
@@ -105,7 +96,7 @@ fn authorized(request: &Request, env: &Env) -> worker::Result<bool> {
         }))
 }
 
-fn websocket(request: Request, env: Env) -> worker::Result<Response> {
+async fn websocket(request: Request, env: Env) -> worker::Result<Response> {
     if request.method() != worker::Method::Get {
         return Response::error("Method not allowed", 405);
     }
@@ -120,42 +111,16 @@ fn websocket(request: Request, env: Env) -> worker::Result<Response> {
         return Response::error("WebSocket upgrade required", 426);
     }
 
-    let name = env.var("WORLD_NAME")?.to_string();
-    let start = Closure::once(move |tunnel: JsValue| {
-        // A panic discards the future, which owns the handshake scratch and socket adapter.
-        future_to_promise(AssertUnwindSafe(async move {
-            let world = world(name)?;
-            let classified = {
-                let mut client =
-                    Socket::from(tunnel.clone().unchecked_into::<worker_sys::Socket>());
-                // Successful reads release the SDK lock. A whole frame fits so the
-                // adapter cannot retain bytes when JS takes over the stream.
-                classify(&mut client, &mut [0; TUNNEL_FRAME], &world)
-                    .await
-                    .map_err(js_error)?
-            };
-            if let handshake::Handshake::Login { consumed } = classified {
-                let prefix = js_sys::Uint8Array::from(consumed.as_slice());
-                let upstream = dial(&world)?;
-                let promise = method(&tunnel, "relay", &[upstream.as_ref(), prefix.as_ref()])?;
-                JsFuture::from(js_sys::Promise::from(promise)).await?;
-            }
-            Ok(JsValue::UNDEFINED)
-        }))
-    });
-    let response = upgrade_minecraft(
-        &start.into_js_value(),
-        TUNNEL_FRAME as u32,
-        handshake::TIMEOUT.as_millis() as u32,
-    )?;
-    Ok(response.into())
+    let world = world(env.var("WORLD_NAME")?.to_string())?;
+    let response = JsFuture::from(world.fetch_with_request(request.inner())?).await?;
+    Ok(response.dyn_into::<web_sys::Response>()?.into())
 }
 
 #[event(fetch)]
 async fn fetch(request: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
     match request.path().as_str() {
         "/health" => Response::ok(r#"{"ready":true}"#).map(json),
-        "/minecraft" => websocket(request, env),
+        "/minecraft" => websocket(request, env).await,
         "/" if request.method() == worker::Method::Get => {
             if env
                 .var("REQUIRE_STATUS_TOKEN")
