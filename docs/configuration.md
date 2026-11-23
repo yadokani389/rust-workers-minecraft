@@ -1,17 +1,16 @@
 # Server configuration
 
-Gameplay settings live in `wrangler.jsonc` under `vars`. Use string values.
-Changing these settings restarts the local Worker, but does not require rebuilding
-Rust. The object reads and validates them in its constructor; invalid settings
+Gameplay settings live in `worker.config.json` under `env` as text bindings.
+Restart the local Worker to apply configuration changes. The object reads and validates them in its constructor; invalid settings
 fail the next connection and appear in the HTTP status response's `failure` field.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `WORLD_NAME` | `world` | Selects the Durable Object and its separate saved world. |
 | `WORLD_SEED` | Unset | Seed for a new world; an existing world keeps its saved seed. |
-| `VIEW_DISTANCE` | `4` | Maximum client view distance, from 2 to 32 chunks. |
+| `VIEW_DISTANCE` | `3` | Maximum client view distance, from 2 to 32 chunks. |
 | `SIMULATION_DISTANCE` | `3` | Simulation radius, from 2 to the configured view distance. |
-| `MAX_PLAYERS` | `20` | Login limit, from 1 to 1,000; capacity depends on the world and workload. |
+| `MAX_PLAYERS` | `2` | Login limit, from 1 to 1,000; capacity depends on the world and workload. |
 | `COMPRESSION_THRESHOLD` | `512` | Compress packets at or above this byte count; `-1` disables compression. |
 | `COMPRESSION_LEVEL` | `1` | Compression level, from 0 to 9; 1 favors speed. |
 | `IDLE_TIMEOUT_SECONDS` | `10` | Reconnect window after the last player leaves, from 0 to 30 seconds; 0 stops immediately. |
@@ -22,22 +21,21 @@ for every world. Chunk generation, separate player locations, and world content
 can substantially increase memory usage. A larger view distance does not imply
 a larger simulation distance is needed.
 
-The default view is now 4 with simulation distance 3. Pumpkin's
-[memory optimizations](memory-reduction.md#exploration-comparison-september-12-2026)
-made room for the larger view: a two-player exploration probe commanding 512
-blocks of travel each completed at 113.81 MiB of Wasm capacity. That is one
-workload, not an unrestricted exploration guarantee.
+This fork starts at view and simulation distance 3 with a two-player limit.
+The [upstream memory probes](memory-reduction.md#exploration-comparison-september-12-2026)
+show how separate exploration paths can raise memory use. Re-run the probe on
+your world before raising the view distance or player limit.
 
 To try a larger view while measuring your world's memory usage:
 
 ```sh
-npm run dev -- --var VIEW_DISTANCE:5 --var SIMULATION_DISTANCE:3
+pnpm run dev --var VIEW_DISTANCE:5 --var SIMULATION_DISTANCE:3
 ```
 
 For packet debugging without compression:
 
 ```sh
-npm run dev -- --var COMPRESSION_THRESHOLD:-1
+pnpm run dev --var COMPRESSION_THRESHOLD:-1
 ```
 
 The server still runs at 20 ticks per second in Survival with Normal difficulty.
@@ -60,7 +58,7 @@ The HTTP status endpoint reports `runtime_starts`, `saved_at` (the last complete
 shutdown save), `idle_deadline`, the effective `settings`, and runtime memory/tick
 statistics. During the reconnect window, `phase` is `running`, `connections` is
 zero, and `idle_deadline` is set. Wait for `phase: "idle"` before stopping
-Wrangler so the final shutdown also completes.
+Miniflare so the final shutdown also completes.
 
 Changing configuration reloads the Worker. Wait for players to leave and the
 world to become idle before changing settings on a world you care about.
@@ -73,9 +71,9 @@ directions, recording traffic, Wasm capacity, allocator usage, status latency,
 and observed tick rate. It writes `experience.json` under `.data/probes/`.
 
 ```sh
-npm run test:experience -- --view 3 --simulation 3 --players 2 --compression=512
-npm run test:experience -- --view 4 --simulation 3 --players 2 --compression=512
-npm run test:experience -- --view 3 --simulation 3 --players 2 --compression=-1
+pnpm run test:experience -- --view 3 --simulation 3 --players 2 --compression=512
+pnpm run test:experience -- --view 4 --simulation 3 --players 2 --compression=512
+pnpm run test:experience -- --view 3 --simulation 3 --players 2 --compression=-1
 ```
 
 Use the same seed, workload, and build when comparing settings. These are local
@@ -85,12 +83,12 @@ JavaScript allocations, and sampling can miss short-lived peaks.
 Tests can use separate loopback ports while the playable server is running:
 
 ```sh
-TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9230 npm test
-TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9230 npm run test:experience -- --view 4
+TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9230 pnpm test
+TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9230 pnpm run test:experience -- --view 4
 ```
 
 `TEST_INSPECTOR_PORT` separates the probe's debugger listener from another local
-Wrangler instance. The probes fail if their chosen ports are occupied and only
+Miniflare instance. The probes fail if their chosen ports are occupied and only
 stop processes they started. Playable world databases are never used by the probes.
 
 ## Local comparison (September 12, 2026)

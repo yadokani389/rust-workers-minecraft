@@ -5,6 +5,7 @@
 /build/
 node_modules/
 .wrangler/
+/.cloudflare/
 /worker/env.d.ts
 *.wasm
 

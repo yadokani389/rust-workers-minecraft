@@ -74,19 +74,22 @@ apply_patch pumpkin pumpkin-memory.patch
 if [ "${1:-}" = --sources-only ]; then exit 0; fi
 
 echo "==> Rust toolchain"
-RUST_CHANNEL="$(python3 -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1],"rb"))["toolchain"]["channel"])' "$REPO/rust-toolchain.toml")"
-rustup toolchain install "$RUST_CHANNEL" --profile minimal --target wasm32-unknown-emscripten --no-self-update
+RUST_VERSION="$(python3 -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1],"rb"))["toolchain"]["channel"])' "$REPO/rust-toolchain.toml")"
+if [[ "$(rustc --version 2>/dev/null)" != "rustc $RUST_VERSION "* ]]; then
+  echo "error: Rust $RUST_VERSION required; run nix develop first." >&2
+  exit 1
+fi
 
 echo "==> worker-build"
 # The release matching the `worker` crate version in Cargo.toml. Built for the
 # host, overriding the wasm target .cargo/config.toml sets.
 WORKER_VERSION="$(python3 -c 'import tomllib,sys; print(tomllib.load(open(sys.argv[1],"rb"))["dependencies"]["worker"]["version"])' "$REPO/Cargo.toml")"
 if [ "$("$BIN/worker-build" --version 2>/dev/null || true)" != "worker-build $WORKER_VERSION" ]; then
-  HOST="$(rustc "+$RUST_CHANNEL" -vV | sed -n 's/^host: //p')"
-  cargo "+$RUST_CHANNEL" install --force --locked --target "$HOST" worker-build --version "$WORKER_VERSION" --root "$WORK"
+  HOST="$(rustc -vV | sed -n 's/^host: //p')"
+  cargo install --force --locked --target "$HOST" worker-build --version "$WORKER_VERSION" --root "$WORK"
 fi
 
 echo "==> Worker dependencies"
-(cd "$REPO" && "$NODE" "$(dirname "$("$NODE" -p 'process.execPath')")/npm" ci --no-audit --no-fund)
+(cd "$REPO" && pnpm install --frozen-lockfile)
 
 echo "Setup complete. Run: bash scripts/test.sh  or  bash scripts/serve.sh"

@@ -1,0 +1,20 @@
+{
+  "name": "rust-workers-minecraft",
+  "compatibilityDate": "2026-09-05",
+  "compatibilityFlags": ["nodejs_compat", "new_module_registry", "no_handle_cross_request_promise_resolution"],
+  "exports": { "MinecraftWorld": { "type": "durable-object", "storage": "sqlite" } },
+  "domains": ["minecraft.yadokani389.net"],
+  "workersDev": false,
+  "previewUrls": false,
+  "env": {
+    "WORLD_NAME": { "type": "text", "value": "world" },
+    "VIEW_DISTANCE": { "type": "text", "value": "3" },
+    "SIMULATION_DISTANCE": { "type": "text", "value": "3" },
+    "MAX_PLAYERS": { "type": "text", "value": "20" },
+    "COMPRESSION_THRESHOLD": { "type": "text", "value": "512" },
+    "COMPRESSION_LEVEL": { "type": "text", "value": "1" },
+    "IDLE_TIMEOUT_SECONDS": { "type": "text", "value": "10" },
+    "MOTD": { "type": "text", "value": "Minecraft on Cloudflare Workers" }
+  },
+  "observability": { "enabled": true, "headSamplingRate": 1 }
+}

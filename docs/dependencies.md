@@ -3,7 +3,7 @@
 A clean checkout is self-contained after `bash scripts/setup.sh`. The patched
 Pumpkin checkout and the worker-build CLI live under `.work/` (ignored);
 worker-build provisions its own Emscripten and wasm-bindgen CLI under
-`~/.cache/worker-build`. Both Cargo and npm dependency graphs are locked.
+`~/.cache/worker-build`. Both Cargo and pnpm dependency graphs are locked.
 
 ## Pinned sources
 
@@ -37,10 +37,11 @@ graph, including the branch commits.
 
 ## Host tools
 
-- Rust: `beta` channel (1.99; `OwnedFd::try_clone` on Emscripten), target
-  `wasm32-unknown-emscripten`; setup installs both through rustup. rustc needs a
-  larger compile-thread stack for pumpkin-data's generated tables; the scripts
-  set `RUST_MIN_STACK`.
+- Rust: `1.99.0`, target `wasm32-unknown-emscripten`. The Nix flake supplies the
+  compiler and target directly. Keep the exact compiler pin with worker-build 0.8.7: newer Cargo
+  versions place the generated JavaScript snippets outside the directory that
+  this worker-build release bundles. The scripts set `RUST_MIN_STACK` for
+  pumpkin-data's generated tables.
 - worker-build 0.8.7 (cloudflare/workers-rs#1061 released): installed by setup
   with `cargo install`, matching the `worker` crate version in Cargo.toml, into
   `.work/bin/`. It provisions emsdk 6.0.10 with
@@ -50,8 +51,7 @@ graph, including the branch commits.
   `build/`. `EMSCRIPTEN`/`EMSDK` select a local toolchain instead.
 - Node: 24+; 26 recommended and selected in CI. Used for build tools and tests.
 - Python: 3.11+ (Emscripten scripts, emsdk and TOML parsing).
-- workerd 1.20260925.1 (Wrangler 4.141.0's bundled version, also pinned directly
-  in `package.json`); 1.20260918.1 was the first release with `net.Server` inbound routing into
+- workerd 1.20260925.1 (used by Miniflare 5.20260925.0-alpha); 1.20260918.1 was the first release with `net.Server` inbound routing into
   Durable Objects (`handleAsNodeConnection`, cloudflare/workerd#7306, #7313) and
   the `node:fs` fixes for positional buffer I/O (#7368), `O_TRUNC` (#7369),
   `O_CREAT` (#7393), and rename over an existing path (#7394).
@@ -94,12 +94,11 @@ bash scripts/setup.sh --sources-only
 
 ## JavaScript dependencies
 
-`package-lock.json` pins Wrangler 4.141.0, workerd 1.20260925.1, `worker-fs-mount` 0.2.0 and
+`pnpm-lock.yaml` pins Miniflare, `cf`, workerd, `worker-fs-mount` 0.2.0 and
 `durable-object-fs` 1.0.0 (the SQLite filesystem mount, imported by
-`src/js/mount.js` and bundled by worker-build). `npm install` applies
-`patches/worker-fs-mount-open-mode.patch` to the installed `worker-fs-mount`
-(numeric open modes masked to their permission bits, as Node does; pending
-upstream). worker-build generates
+`src/js/mount.js` and bundled by worker-build). pnpm applies
+`patches/worker-fs-mount-open-mode.patch` through `patchedDependencies`.
+The patch keeps only the permission bits in numeric open modes, as Node does. worker-build generates
 `build/index.js`, which wraps the exports into the entrypoint and derives the
 Durable Object class from `DurableObject` for RPC.
 

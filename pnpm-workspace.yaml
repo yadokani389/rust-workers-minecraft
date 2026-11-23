@@ -1,0 +1,9 @@
+allowBuilds:
+  esbuild: true
+  workerd: true
+
+overrides:
+  durable-object-fs>worker-fs-mount: 0.2.0
+
+patchedDependencies:
+  worker-fs-mount@0.2.0: patches/worker-fs-mount-open-mode.patch

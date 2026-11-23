@@ -1,30 +1,34 @@
 {
+  "$schema": "https://json.schemastore.org/package.json",
   "name": "rust-workers-minecraft",
   "private": true,
   "type": "module",
+  "license": "GPL-3.0-only",
+  "packageManager": "pnpm@12.14.0",
   "engines": {
     "node": ">=24"
   },
   "dependencies": {
     "durable-object-fs": "1.0.0",
-    "worker-fs-mount": "0.2.0"
+    "worker-fs-mount": "0.2.0",
+    "ws": "8.23.0"
   },
   "devDependencies": {
-    "workerd": "1.20260925.1",
-    "wrangler": "4.141.0"
+    "@cloudflare/build-output-utils": "1.0.0-rc.1",
+    "cf": "1.0.0-rc.2",
+    "miniflare": "5.20260925.0-alpha"
   },
   "scripts": {
-    "postinstall": "node scripts/patch-packages.mjs",
     "build": "bash scripts/build.sh",
     "dev": "bash scripts/serve.sh",
+    "bridge": "node bridge/cli.mjs",
+    "deploy:prepare": "pnpm run build && node scripts/prepare-deployment.mjs",
+    "deploy:check": "pnpm run deploy:prepare && cf deploy --prebuilt --dry-run",
+    "deploy": "pnpm run deploy:prepare && cf deploy --prebuilt",
     "test": "bash scripts/test.sh",
-    "test:memory": "npm run build && node tests/memory.mjs",
+    "test:bridge": "node --test bridge/*.test.mjs",
+    "test:memory": "pnpm run build && node tests/memory.mjs",
     "test:scheduler": "bash scripts/test-scheduler.sh",
-    "test:experience": "npm run build && node tests/experience.mjs"
-  },
-  "overrides": {
-    "durable-object-fs": {
-      "worker-fs-mount": "$worker-fs-mount"
-    }
+    "test:experience": "pnpm run build && node tests/experience.mjs"
   }
 }

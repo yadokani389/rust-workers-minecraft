@@ -10,10 +10,10 @@ Read [README.md](README.md), [architecture](docs/architecture.md), and
   (`workerd.js`).
 - `tests/`: protocol clients and the integration test.
 - `scripts/setup.sh`: provision the patched Pumpkin checkout, worker-build (which
-  provisions Emscripten and wasm-bindgen) and npm dependencies.
+  provisions Emscripten and wasm-bindgen) and pnpm dependencies.
 - `scripts/{build,serve,test}.sh`: build, run, and validate the Workers server.
 
-Use Node 24+ (26 recommended) and the pinned Rust toolchain. Run `npm test` after
+Use Node 24+ (26 recommended) and the pinned Rust toolchain. Run `pnpm test` after
 build/runtime changes; it must print `PUMPKIN-DO-SQLITE-RESTART-OK` after verifying
 player and chunk restoration.
 Scripts bind to loopback and fail if their ports are occupied. Do not kill another
@@ -22,7 +22,7 @@ process to free a port.
 ## Reproducibility and data
 
 Changes to the patched Pumpkin checkout must be reflected in `patches/`
-(`node_modules` patches are applied by `npm install`). Update pins for
+(JavaScript dependency patches are applied by pnpm). Update pins for
 upstream changes; workers-rs, tokio and mio are git dependencies in Cargo.toml. Preserve the unified ticker and cooperative scheduler unless
 the task requires a runtime change. Keep the event-loop model: exports
 return promises and nothing blocks or suspends; do not reintroduce JSPI, old

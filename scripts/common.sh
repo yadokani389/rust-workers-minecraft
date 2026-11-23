@@ -31,8 +31,8 @@ require_toolchain() {
 }
 
 require_packages() {
-  if [ ! -f "$REPO/node_modules/wrangler/bin/wrangler.js" ]; then
-    echo "error: run npm ci first." >&2
+  if [ ! -f "$REPO/node_modules/miniflare/package.json" ]; then
+    echo "error: run pnpm install --frozen-lockfile first." >&2
     exit 1
   fi
 }

@@ -4,7 +4,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { status, play, waitFor } from './client.mjs';
 import { testServer } from './server.mjs';
 
-const { startWorker, request, checkpoint } = await testServer({ vars: { IDLE_TIMEOUT_SECONDS: '5', MAX_PLAYERS: '2' } });
+const tunneled = process.env.TEST_TRANSPORT === 'websocket';
+const { startWorker, request, checkpoint } = await testServer({ vars: {
+  IDLE_TIMEOUT_SECONDS: '5', MAX_PLAYERS: '2', VIEW_DISTANCE: tunneled ? '3' : '4',
+} });
 
 const { blocks } = JSON.parse(await readFile(new URL('../.work/pumpkin/assets/blocks.json', import.meta.url)));
 const states = new Map(blocks.flatMap(block => block.states.map(state => [state.id, { ...state, name: block.name }])));
@@ -37,9 +40,7 @@ try {
   assert.equal((await status({ fragmented: true })).version.protocol, 776);
   assert.equal((await status()).players.max, 2);
   assert.equal((await request('/')).runtime_starts, 0, 'Status ping started Wasm');
-  // Keep traffic below the 500 packets/s limit while stressing startup: the
-  // reader and world generation must both progress before terrain arrives.
-  const a = await play('ProbeA', { tickIntervalMs: 10 }); clients.push(a);
+  const a = await play('ProbeA', { tickIntervalMs: tunneled ? 50 : 10 }); clients.push(a);
   assert.ok(a.traffic.sentTicks > 0, 'Client did not tick while terrain was loading');
   console.log(`Client ticks sent during initial spawn: ${a.traffic.sentTicks}`);
   const b = await play('ProbeB'); clients.push(b);
@@ -73,7 +74,13 @@ try {
   await delay(300);
   assert.equal(a.block(changedBlock), 0, 'Edited block changed before checkpoint');
   assert.equal(b.block(changedBlock), 0, 'Second client lost the edit before checkpoint');
-  await a.close(); await b.close(); clients.length = 0;
+  await a.close();
+  const keepAlives = b.traffic.keepAlives;
+  await waitFor(() => {
+    b.assertHealthy(); worker.healthy();
+    return b.traffic.keepAlives > keepAlives;
+  }, 'second player keep-alive after the first player disconnects');
+  await b.close(); clients.length = 0;
   const warm = await checkpoint(worker, { stopped: false });
   const reconnected = await play('ProbeA'); clients.push(reconnected);
   const resumed = await request('/');

@@ -4,12 +4,12 @@
 
 The whole Worker is Rust: `worker-build --emscripten`, with the `worker` crate's
 `experimental_tokio` feature, links the `pumpkin-do` bin for `wasm32-unknown-emscripten`
-through emcc and emits the module Wrangler serves. The entrypoint's
+through emcc and emits the module Miniflare serves. The entrypoint's
 `#[event(connect)]` handler reads a bounded Minecraft handshake over the
 `worker::Socket` (`src/handshake.rs`): server-list requests are answered from
 the object's metadata (`serverList`) without starting a server, and gameplay
 connections are forwarded to the named `MinecraftWorld` object (declared under
-`exports` in `wrangler.jsonc` and reached through `cloudflare:workers`'
+`exports` in `worker.config.json` and reached through `cloudflare:workers`'
 `exports`) with its `connect`, writing the consumed bytes ahead and copying both directions
 with Tokio. `fetch` (`#[event(fetch)]`) serves status.
 
@@ -91,12 +91,12 @@ server awaits `storage.sync()` before the last connection is reported closed,
 and status shows that time.
 
 Logging goes to the process's stdout and stderr through `NODERAWFS`, which
-Wrangler relays as `stdout:` and `stderr:` lines.
+Miniflare relays as `stdout:` and `stderr:` lines.
 
 ## Development interfaces
 
 The supplied configuration listens on loopback TCP port 25565 and HTTP port 8787.
-The world name comes from `WORLD_NAME` in `wrangler.jsonc`.
+The world name comes from `WORLD_NAME` in `worker.config.json`.
 
 - `GET /health`: Worker readiness.
 - `GET /`: phase, connection count, runtime statistics, the runtime start
@@ -109,7 +109,7 @@ Allocator counters include allocation metadata and unused container capacity;
 Wasm capacity additionally includes static data, stack, and growth headroom.
 
 Local databases live in `.data/workers/server/`. Integration tests use separate
-storage under `.data/probes/` and restart Wrangler to verify restoration. Rust
+storage under `.data/probes/` and restart Miniflare to verify restoration. Rust
 panics, Rust error logs, and runtime crashes fail the integration test.
 
 ## Build constraints

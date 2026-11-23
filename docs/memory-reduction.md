@@ -144,8 +144,8 @@ accounting. The integration suite verifies player and edited-chunk restoration.
 To repeat the workloads with the current build:
 
 ```sh
-TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 npm run test:experience -- --players 4 --max-players 20 --view 4 --simulation 3 --steps 128
-TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 npm run test:experience -- --players 20 --max-players 20 --view 4 --simulation 3 --steps 0
+TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 pnpm run test:experience -- --players 4 --max-players 20 --view 4 --simulation 3 --steps 128
+TEST_TCP_PORT=25566 TEST_HTTP_PORT=8788 TEST_INSPECTOR_PORT=9241 pnpm run test:experience -- --players 20 --max-players 20 --view 4 --simulation 3 --steps 0
 ```
 
 ## Earlier stationary comparison (September 5, 2026)
@@ -173,8 +173,8 @@ transient JavaScript allocation. Process RSS is a separate measurement.
 
 ## Measuring changes
 
-Run `npm run test:memory` for a fresh world with a fixed seed, or supply a seed
-with `npm run test:memory -- --seed 1789200079352125165`. See
+Run `pnpm run test:memory` for a fresh world with a fixed seed, or supply a seed
+with `pnpm run test:memory -- --seed 1789200079352125165`. See
 [development](development.md) for the probe's output and sampling limits.
 
 Status reports `wasm_memory_bytes`, `heap_allocated_bytes`, `heap_free_bytes`, and
@@ -185,4 +185,4 @@ headroom. Use a DevTools heap snapshot to account for JavaScript allocations.
 The earlier optimization was validated with 114 native generation tests, including
 structure/template round trips, and the full integration suite's shared block
 edit and player/block restoration. Future changes must continue to pass
-`npm test` with `PUMPKIN-DO-SQLITE-RESTART-OK`.
+`pnpm test` with `PUMPKIN-DO-SQLITE-RESTART-OK`.

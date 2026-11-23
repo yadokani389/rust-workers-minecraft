@@ -6,7 +6,7 @@
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const MAX_PACKET: usize = 1024;
-const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+pub const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 pub enum Handshake {
     /// A server-list exchange was answered; the connection is done.
@@ -82,7 +82,6 @@ struct Packets<R> {
     reader: R,
     buffer: Vec<u8>,
     consumed: Vec<u8>,
-    deadline: tokio::time::Instant,
 }
 
 impl<R: AsyncRead + AsyncWrite + Unpin> Packets<R> {
@@ -91,12 +90,11 @@ impl<R: AsyncRead + AsyncWrite + Unpin> Packets<R> {
             reader,
             buffer: Vec::new(),
             consumed: Vec::new(),
-            deadline: tokio::time::Instant::now() + TIMEOUT,
         }
     }
 
     /// The next packet body, or `None` at a clean end of stream.
-    async fn read(&mut self) -> Result<Option<Vec<u8>>, String> {
+    async fn read(&mut self, chunk: &mut [u8]) -> Result<Option<Vec<u8>>, String> {
         loop {
             if let Some((size, start)) = read_varint(&self.buffer)? {
                 let size = size as usize;
@@ -110,11 +108,7 @@ impl<R: AsyncRead + AsyncWrite + Unpin> Packets<R> {
                     return Ok(Some(whole[start..].to_vec()));
                 }
             }
-            let mut chunk = [0u8; 512];
-            let read = tokio::time::timeout_at(self.deadline, self.reader.read(&mut chunk))
-                .await
-                .map_err(|_| "Handshake/status timed out".to_string())?
-                .map_err(|e| e.to_string())?;
+            let read = self.reader.read(chunk).await.map_err(|e| e.to_string())?;
             if read == 0 {
                 if !self.buffer.is_empty() {
                     return Err("Truncated handshake/status packet".into());
@@ -134,14 +128,18 @@ impl<R: AsyncRead + AsyncWrite + Unpin> Packets<R> {
 
 /// Classifies a connection by its handshake. `server_list(protocol)` supplies
 /// the status JSON.
-pub async fn accept<S, F, Fut>(socket: &mut S, server_list: F) -> Result<Handshake, String>
+pub async fn accept<S, F, Fut>(
+    socket: &mut S,
+    chunk: &mut [u8],
+    server_list: F,
+) -> Result<Handshake, String>
 where
     S: AsyncRead + AsyncWrite + Unpin,
     F: FnOnce(u32) -> Fut,
     Fut: std::future::Future<Output = Result<String, String>>,
 {
     let mut packets = Packets::new(&mut *socket);
-    let Some(handshake) = packets.read().await? else {
+    let Some(handshake) = packets.read(chunk).await? else {
         return Ok(Handshake::Status);
     };
     let (protocol, state) = handshake_state(&handshake)?;
@@ -150,7 +148,7 @@ where
             consumed: packets.into_consumed(),
         });
     }
-    let request = packets.read().await?;
+    let request = packets.read(chunk).await?;
     if request.as_deref() != Some(&[0][..]) {
         return Err("Invalid status request".into());
     }
@@ -164,7 +162,7 @@ where
         .await
         .map_err(|e| e.to_string())?;
     packets.reader.flush().await.map_err(|e| e.to_string())?;
-    match packets.read().await? {
+    match packets.read(chunk).await? {
         None => {}
         Some(ping) if ping.len() == 9 && ping[0] == 1 => {
             packets

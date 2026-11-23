@@ -19,12 +19,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+      - uses: cachix/install-nix-action@v31
       - uses: actions/cache@v4
         with:
           path: |
@@ -33,11 +28,11 @@ jobs:
             ~/.cache/worker-build
           key: minecraft-toolchain-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'scripts/setup.sh') }}
       - name: Setup pinned sources, toolchain and Worker dependencies
-        run: bash scripts/setup.sh
-      - name: Worker TCP, shared world, and SQLite restart
+        run: nix develop --command bash scripts/setup.sh
+      - name: Worker TCP and WebSocket, shared world, and SQLite restart
         run: |
           set -o pipefail
-          npm test 2>&1 | tee smoke.log
+          nix develop --command pnpm test 2>&1 | tee smoke.log
           grep -q 'PUMPKIN-DO-SQLITE-RESTART-OK' smoke.log
       - name: Upload smoke log
         if: always()
