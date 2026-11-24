@@ -69,7 +69,7 @@ try {
   assert.equal((await status({ fragmented: true })).version.protocol, 776);
   assert.equal((await status()).players.max, 2);
   assert.equal((await request("/")).runtime_starts, 0, "Status ping started Wasm");
-  const a = await play("ProbeA", { tickIntervalMs: tunneled ? 50 : 10 });
+  const a = await play("ProbeA");
   clients.push(a);
   assert.ok(a.traffic.sentTicks > 0, "Client did not tick while terrain was loading");
   console.log(`Client ticks sent during initial spawn: ${a.traffic.sentTicks}`);

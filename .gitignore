@@ -3,6 +3,8 @@
 /target/
 **/target/
 /build/
+/bridge/dist/
+/bridge/THIRD-PARTY-NOTICES.txt
 node_modules/
 .wrangler/
 /.cloudflare/

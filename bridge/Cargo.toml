@@ -1,0 +1,22 @@
+[package]
+name = "mc-wss-bridge"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "Local TCP to WebSocket bridge for Minecraft on Workers"
+
+[workspace]
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4.6", features = ["derive"] }
+dotenvy = "0.15.7"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+rpassword = "7.5.5"
+# The tokio-tungstenite rustls features choose no crypto provider, and rustls
+# panics building a ClientConfig without one, so ring is selected here.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+url = "2"

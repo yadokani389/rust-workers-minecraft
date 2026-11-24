@@ -1,0 +1,103 @@
+name: Bridge build
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  notices:
+    name: Third-party notices
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - name: Install cargo-about
+        run: cargo install cargo-about --locked --version =0.9.0 --features cli
+      - name: Generate notices for every release target
+        working-directory: bridge
+        run: |
+          cargo fetch --locked
+          cargo about generate --offline --locked --fail -o THIRD-PARTY-NOTICES.txt third-party.hbs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: third-party-notices
+          path: |
+            bridge/LICENSE
+            bridge/THIRD-PARTY-NOTICES.txt
+          if-no-files-found: error
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: notices
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            ext: ""
+            crt: ""
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: .exe
+            crt: -C target-feature=+crt-static
+            archive: zip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            ext: ""
+            crt: ""
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          targets: ${{ matrix.target }}
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v8
+        with:
+          name: third-party-notices
+          path: bridge
+      - name: Build
+        working-directory: bridge
+        env:
+          RUSTFLAGS: ${{ matrix.crt }}
+        run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Package the archive
+        working-directory: bridge
+        shell: bash
+        run: |
+          stage="dist/mc-wss-bridge-${{ matrix.target }}"
+          mkdir -p "$stage"
+          cp "target/${{ matrix.target }}/release/mc-wss-bridge${{ matrix.ext }}" "$stage/mc-wss-bridge${{ matrix.ext }}"
+          cp LICENSE THIRD-PARTY-NOTICES.txt "$stage/"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            (cd "$stage" && 7z a -tzip -mx=9 "../mc-wss-bridge-${{ matrix.target }}.zip" "mc-wss-bridge${{ matrix.ext }}" LICENSE THIRD-PARTY-NOTICES.txt > /dev/null)
+          else
+            tar -czf "dist/mc-wss-bridge-${{ matrix.target }}.tar.gz" -C "$stage" "mc-wss-bridge${{ matrix.ext }}" LICENSE THIRD-PARTY-NOTICES.txt
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          path: bridge/dist/mc-wss-bridge-${{ matrix.target }}.${{ matrix.archive }}
+          archive: false
+          if-no-files-found: error

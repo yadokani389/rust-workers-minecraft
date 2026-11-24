@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
-      - uses: actions/cache@v4
+      - uses: actions/checkout@v7
+      - uses: cachix/install-nix-action@v32
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -36,7 +36,7 @@ jobs:
           grep -q 'PUMPKIN-DO-SQLITE-RESTART-OK' smoke.log
       - name: Upload smoke log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: minecraft-smoke-log
           path: |

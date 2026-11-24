@@ -21,12 +21,11 @@
   "scripts": {
     "build": "bash scripts/build.sh",
     "dev": "bash scripts/serve.sh",
-    "bridge": "node bridge/cli.mjs",
     "deploy:prepare": "pnpm run build && node scripts/prepare-deployment.mjs",
     "deploy:check": "pnpm run deploy:prepare && cf deploy --prebuilt --dry-run",
     "deploy": "pnpm run deploy:prepare && cf deploy --prebuilt",
     "test": "bash scripts/test.sh",
-    "test:bridge": "node --test bridge/*.test.mjs",
+    "test:bridge": "bash scripts/test-bridge.sh",
     "test:memory": "pnpm run build && node tests/memory.mjs",
     "test:scheduler": "bash scripts/test-scheduler.sh",
     "test:experience": "pnpm run build && node tests/experience.mjs"

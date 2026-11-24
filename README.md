@@ -13,17 +13,25 @@ Minecraft → local TCP bridge → WSS → Worker → MinecraftWorld → Pumpkin
 
 ## Play on the public server
 
-Ask the server operator for the bridge token. From a checkout, put
-`MC_BRIDGE_TOKEN=...` in `.env`, then install the bridge dependencies and run
-it with Node:
+Ask the server operator for the bridge token and for the archive of your platform.
 
-```sh
-pnpm install
-node --env-file=.env bridge/cli.mjs wss://minecraft.yadokani389.net/minecraft
-```
+| Platform | Start |
+| --- | --- |
+| Linux x86-64 | `./mc-wss-bridge` |
+| Windows x86-64 | `.\mc-wss-bridge.exe` |
+| macOS, Apple silicon | `./mc-wss-bridge` |
 
-On the same PC, connect **Minecraft Java 26.2** to **`127.0.0.1:25565`**. The
-bridge listens on loopback and uses port `25565` when you omit the port argument.
+Extract the archive, then start the executable in a terminal. It asks for each
+value it was not given, and Enter keeps the URL and port the prompt shows; paste
+the token when it asks. The program needs nothing else installed. The binaries
+are unsigned, so macOS Gatekeeper or Windows SmartScreen may ask you to allow
+the first run.
+
+On the same PC, connect **Minecraft Java 26.2** to the address the bridge prints,
+**`127.0.0.1:25565`** by default.
+
+For build and configuration instructions, see
+[the player bridge](docs/development.md#the-player-bridge).
 
 ## Run locally
 
@@ -58,16 +66,18 @@ starts it again on the same world. Server-list pings do not start the runtime.
 Wait for `phase: "idle"` in status before stopping Miniflare so the final save
 completes.
 
-To test the WebSocket bridge against the local Worker, put
-`MC_BRIDGE_TOKEN=...` in an untracked `.dev.vars` file. Start `pnpm run dev`,
-then run the bridge in another terminal:
+The local Worker reads `MC_BRIDGE_TOKEN` from an untracked `.dev.vars` file.
+Start `pnpm run dev`, then run the bridge in another terminal:
 
 ```sh
-node --env-file=.dev.vars bridge/cli.mjs ws://127.0.0.1:8787/minecraft 25566
+cd bridge
+cargo run -- ws://127.0.0.1:8787/minecraft 25566
 ```
 
-Connect **Minecraft Java 26.2** to `127.0.0.1:25566`. Port `25565` is already in
-use by the local raw TCP listener. The bridge requires `wss://` outside loopback.
+When the bridge asks for the token, paste the same value the Worker reads from
+`.dev.vars`. Connect **Minecraft Java 26.2** to `127.0.0.1:25566`. Port `25565`
+is already in use by the local raw TCP listener. The bridge requires `wss://`
+outside loopback.
 
 ## Build and contribute
 
@@ -114,7 +124,14 @@ Licensed under [GPL-3.0-only](LICENSE), consistent with Pumpkin. The
 [original MIT notice](LICENSES/rust-workers-minecraft-MIT.txt) is retained for
 inherited code. This fork adds WebSocket access, a local bridge, and pnpm/Nix
 setup to [the upstream project](https://github.com/danlapid/rust-workers-minecraft)
-in November 2026. Dependencies retain their own licenses, including MIT for
-[ws](https://github.com/websockets/ws/blob/8.23.0/LICENSE). If you distribute a
-compiled Worker, provide its GPL-corresponding source and build scripts.
-This project is not affiliated with Mojang or Microsoft.
+in November 2026.
+
+The bridge in [`bridge/`](bridge/) is a separate program with its own Cargo
+workspace and its own [MIT license](bridge/LICENSE), copyright yadokani389. That
+grant covers the bridge program and its source alone, so a player can build and
+pass on that binary without the GPL. The Worker stays GPL-3.0-only. The crates the
+bridge links and the Worker's JavaScript dependencies keep their own licenses,
+including MIT for [ws](https://github.com/websockets/ws/blob/8.23.0/LICENSE), and
+`bridge/Cargo.lock` pins the crate versions the bridge archives ship notices for.
+If you distribute a compiled Worker, provide its GPL-corresponding source and build
+scripts. This project is not affiliated with Mojang or Microsoft.

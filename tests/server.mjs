@@ -3,11 +3,11 @@ import net from "node:net";
 import path from "node:path";
 import { fork } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { once } from "node:events";
 import { get } from "node:http";
 import { mkdir, mkdtemp, appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import workerConfig from "../worker.config.json" with { type: "json" };
+import { spawnBridge } from "./bridge.mjs";
 import { waitFor } from "./client.mjs";
 import { PORT, HTTP_PORT } from "./protocol.mjs";
 
@@ -37,6 +37,12 @@ export async function testServer({ seed = "1789195700909824175", vars = {} } = {
   let phase = 0;
   const token =
     process.env.TEST_TRANSPORT === "websocket" ? randomBytes(32).toString("hex") : undefined;
+  if (!token) {
+    // The world binds 25565 inside the Durable Object, and workerd declares only
+    // the platform's own inbound TCP port to the isolate. A test listener on any
+    // other port makes that bind fail, so no login can be routed to it.
+    assert.equal(PORT, 25565, "TEST_TCP_PORT must be 25565 for the TCP transport");
+  }
   async function startWorker(overrides = {}) {
     const log = path.join(probe, `${++phase}-minecraft.log`);
     assert.ok(
@@ -96,7 +102,7 @@ export async function testServer({ seed = "1789195700909824175", vars = {} } = {
     });
     let bridge;
     async function stop() {
-      if (bridge?.listening) await once(bridge.close(), "close");
+      if (bridge) await bridge.stop();
       child.kill("SIGTERM");
       const force = setTimeout(() => {
         if (!child.pid) return;
@@ -127,7 +133,6 @@ export async function testServer({ seed = "1789195700909824175", vars = {} } = {
         }
       }, `Miniflare (${log})`);
       if (token) {
-        const { createBridgeServer } = await import("../bridge/cli.mjs");
         const url = `ws://127.0.0.1:${HTTP_PORT}/minecraft`;
         const unauthorized = await new Promise((resolve, reject) => {
           const request = get(
@@ -153,8 +158,7 @@ export async function testServer({ seed = "1789195700909824175", vars = {} } = {
           });
         });
         assert.equal(unauthorized, 401);
-        bridge = createBridgeServer({ url, token });
-        await once(bridge.listen(PORT), "listening");
+        bridge = await spawnBridge({ url, port: String(PORT), token });
       }
     } catch (error) {
       await stop();

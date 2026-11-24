@@ -36,3 +36,15 @@ require_packages() {
     exit 1
   fi
 }
+
+# The bridge is a separate workspace with its own target directory; CARGO_TARGET_DIR
+# here belongs to the Worker build.
+build_bridge() {
+  local host
+  (
+    cd "$REPO/bridge"
+    env -u CARGO_TARGET_DIR cargo build --locked
+  ) >&2
+  host="$(rustc -vV | sed -n 's/^host: //p')"
+  echo "$REPO/bridge/target/$host/debug/mc-wss-bridge"
+}

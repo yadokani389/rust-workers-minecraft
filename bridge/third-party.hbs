@@ -1,0 +1,22 @@
+mc-wss-bridge third-party notices
+=============================
+
+mc-wss-bridge itself is MIT licensed; see LICENSE in this archive. It links the crates
+listed below, each under the terms its authors chose. Every distinct license text
+appears once, followed by the crates that use it.
+
+{{#each overview}}
+  {{{name}}} ({{count}})
+{{/each}}
+
+{{#each licenses}}
+-------------------------------------------------------------------------------
+{{{name}}}
+-------------------------------------------------------------------------------
+Used by:
+{{#each used_by}}
+  {{crate.name}} {{crate.version}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

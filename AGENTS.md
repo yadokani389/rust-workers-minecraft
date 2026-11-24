@@ -11,7 +11,11 @@ Read [README.md](README.md), [architecture](docs/architecture.md), and
 - `tests/`: protocol clients and the integration test.
 - `scripts/setup.sh`: provision the patched Pumpkin checkout, worker-build (which
   provisions Emscripten and wasm-bindgen) and pnpm dependencies.
-- `scripts/{build,serve,test}.sh`: build, run, and validate the Workers server.
+- `bridge/`: the native player bridge. It is its own Cargo workspace and is
+  MIT-licensed under `bridge/LICENSE`; do not fold it into the Worker workspace or
+  relicense the Worker to match it.
+- `scripts/{build,serve,test,test-bridge}.sh`: build, run, and validate the Workers
+  server and the bridge.
 
 Use Node 24+ (26 recommended) and the pinned Rust toolchain. Run `pnpm test` after
 build/runtime changes; it must print `PUMPKIN-DO-SQLITE-RESTART-OK` after verifying
